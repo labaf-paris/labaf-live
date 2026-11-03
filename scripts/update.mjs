@@ -2,9 +2,11 @@
 //   node scripts/update.mjs --plan   -> dit s'il y a quelque chose à lire (pour GitHub Actions)
 //   node scripts/update.mjs live     -> relit les tournois en cours (toutes les 5 min)
 //   node scripts/update.mjs full     -> relit aussi les inscriptions des tournois à venir (toutes les heures)
+//   node scripts/update.mjs saison   -> relit tous les tournois déjà commencés (rattrapage, à la demande)
 import fs from 'node:fs';
 import path from 'node:path';
 import { createRequire } from 'node:module';
+import { fileURLToPath } from 'node:url';
 
 const require = createRequire(import.meta.url);
 const { extractTournament } = require('./extract.cjs');
@@ -13,8 +15,9 @@ const CLUB = 'PSC';                       // code du club LABAF Paris sur Coral
 const TOUR = 4;                           // circuit national FFBF sur Coral
 const LIST_URL = `https://api.tablesoccer.org/cms.tournaments?tour=${TOUR}`;
 const PAGE_URL = (code) => `https://app.tablesoccer.org/p/${code}/`;
-const DATA = path.join(path.dirname(new URL(import.meta.url).pathname), '..', 'docs', 'data');
+const DATA = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'docs', 'data');
 const UPCOMING_DAYS = 366;                // horizon de lecture des inscriptions (toute la saison)
+const MIN_MATCHES = 10;                   // matchs minimum pour le classement « meilleur pourcentage de victoires »
 
 const LEVELS = {
   16: 'loisir', 19: 'regional', 22: 'national',
@@ -52,6 +55,8 @@ const isRecent = (t, today) => t.end < today && t.end >= addDays(today, -1) && t
 function plan(list, mode, today) {
   const live = list.filter((t) => isLive(t, today) || isRecent(t, today));
   if (mode === 'live') return live;
+  // « saison » : relit une fois tous les tournois déjà commencés (rattrapage des statistiques)
+  if (mode === 'saison') return list.filter((t) => t.start <= today);
   const upcoming = list.filter((t) => t.start > today && t.start <= addDays(today, UPCOMING_DAYS));
   const map = new Map([...live, ...upcoming].map((t) => [t.code, t]));
   return [...map.values()];
@@ -115,8 +120,57 @@ async function main() {
     const modalities = s ? s.modalities : (old.modalities || null);
     return { ...t, members, players: s ? s.players : (old.players || null), modalities, hasDetail };
   });
-  writeJson(path.join(DATA, 'index.json'), { club: CLUB, updated: nowIso, tournaments });
+  const season = computeSeason(tournaments, today);
+  writeJson(path.join(DATA, 'index.json'), { club: CLUB, updated: nowIso, season, tournaments });
   console.log('Données écrites.');
+}
+
+// Bilan de la saison du club, calculé à partir des fichiers des tournois déjà commencés.
+// - un match LABAF contre LABAF compte une seule fois dans « matchs joués » et n'entre ni dans
+//   le bilan V/D du club ni dans les buts (il s'annulerait) ; il compte en revanche une victoire
+//   pour le joueur qui l'a gagné.
+// - un match de double gagné compte 1 victoire pour chacun des joueurs LABAF de l'équipe.
+function computeSeason(tournaments, today) {
+  const s = { tournaments: 0, matches: 0, v: 0, d: 0, n: 0, goalsFor: 0, goalsAgainst: 0, podiums: { 1: 0, 2: 0, 3: 0 }, best: {} };
+  const wins = {}; // nom -> { g, v, d, n }
+  let half = 0;
+  const sum = (a) => (a || []).reduce((x, y) => x + (+y || 0), 0);
+  for (const t of tournaments) {
+    if (t.start > today) continue;
+    const d = readJson(path.join(DATA, 't', `${t.code}.json`), null);
+    if (!d) continue;
+    let played = false;
+    for (const e of d.entries || []) {
+      const mates = (e.team || []).filter((p) => p.member);
+      for (const p of mates) wins[p.name] = wins[p.name] || { g: p.g, v: 0, d: 0, n: 0 };
+      if (e.rank >= 1 && e.rank <= 3) s.podiums[e.rank]++;
+      for (const m of e.matches || []) {
+        if (m.status !== 'done' || !m.res) continue;
+        played = true;
+        const internal = (m.opp || []).some((p) => p.member);
+        for (const p of mates) wins[p.name][m.res === 'V' ? 'v' : m.res === 'D' ? 'd' : 'n']++;
+        if (internal) { half++; continue; }
+        s.matches++;
+        if (m.res === 'V') s.v++; else if (m.res === 'D') s.d++; else s.n++;
+        if (m.score) { s.goalsFor += sum(m.score.us); s.goalsAgainst += sum(m.score.them); }
+      }
+    }
+    if (played) s.tournaments++;
+  }
+  s.matches += Math.round(half / 2);
+  // Podium des 3 meilleurs joueurs et des 3 meilleures joueuses : plus fort pourcentage de
+  // victoires (V / (V + D)), parmi ceux qui ont joué au moins MIN_MATCHES matchs dans la saison.
+  // À pourcentage égal, celui qui a le plus de victoires passe devant.
+  const pct = (w) => (w.v + w.d ? Math.round((100 * w.v) / (w.v + w.d)) : 0);
+  for (const g of ['m', 'f']) {
+    s.best[g] = Object.entries(wins)
+      .filter(([, w]) => w.g === g && w.v + w.d + w.n >= MIN_MATCHES)
+      .sort((a, b) => pct(b[1]) - pct(a[1]) || b[1].v - a[1].v || a[0].localeCompare(b[0]))
+      .slice(0, 3)
+      .map(([name, w]) => ({ name, pct: pct(w), v: w.v, d: w.d, n: w.n }));
+  }
+  s.minMatches = MIN_MATCHES;
+  return s;
 }
 
 main().catch((e) => { console.error(e); process.exit(1); });

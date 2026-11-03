@@ -24,7 +24,14 @@ function extractTournament(CLUB) {
   };
   const cap = (s) => (s || '').trim();
   const pName = (p) => p ? cap(p.first_name) + ' ' + cap(p.last_name).toUpperCase() : '?';
-  const person = (pid) => { const p = pById[pid]; return { name: pName(p), club: mainClub(p), member: isMember(p) }; };
+  // Genre (« f » ou « m ») : gardé seulement pour les joueurs du club, pour la stat « joueur / joueuse de la saison »
+  const gender = (p) => (p && p.gender === 'woman' ? 'f' : p && p.gender === 'man' ? 'm' : undefined);
+  const person = (pid) => {
+    const p = pById[pid];
+    const o = { name: pName(p), club: mainClub(p), member: isMember(p) };
+    if (o.member && gender(p)) o.g = gender(p);
+    return o;
+  };
 
   const teamPlayers = (tid) => (st.team_players_index && st.team_players_index[tid]) || [];
 

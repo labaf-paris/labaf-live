@@ -1,7 +1,7 @@
 # LABAF Live — mémoire du projet
 
 > Fichier de contexte pour Claude. À placer à la racine du dépôt : Claude Code le lit automatiquement à chaque nouvelle session.
-> Dernière mise à jour : 1er novembre 2026.
+> Dernière mise à jour : 3 novembre 2026.
 
 ## Le projet en bref
 
@@ -55,6 +55,7 @@ README.md              notice
 | Idem, en secours | toutes les 5 min en théorie (souvent 5 à 20 en pratique) | cron GitHub `*/5 * * * *` |
 | Relecture complète de la saison (`full`) : inscriptions et modalités | toutes les 3 h en théorie (en pratique 4 à 8 h) | cron GitHub `17 */3 * * *` |
 | Lancement manuel | à la demande | onglet Actions → « Mise à jour des tournois » → Run workflow (mode full) |
+| Rattrapage de toute la saison (`saison`) : relit tous les tournois déjà commencés | à la demande | Run workflow avec le mode `saison`, ou `node scripts/update.mjs saison` en local |
 | Rafraîchissement de la page chez le visiteur | toutes les 60 s | le site lui-même |
 
 - **Clé GitHub** (fine-grained token, propriétaire `labaf-paris`, dépôt labaf-live seulement, droit Actions : lecture et écriture) : stockée **uniquement dans cron-job.org**. **Elle expire le 2 octobre 2027** : il faudra la régénérer et la recoller dans cron-job.org.
@@ -67,7 +68,10 @@ README.md              notice
 - **Couleur par niveau** : National bleu, Régional vert, Loisir ambre, Championnats violet. Le **rouge est réservé au « En direct »**.
 - **Couleur par catégorie** et **ordre fixe partout** : simple open, simple dames, double open, double dames, double mixte, puis seniors et juniors.
 - **Podiums** : médailles or, argent et bronze, plus un bloc « Podiums » en haut de la fiche.
-- **Accueil** : cartes à la une (dernier tournoi, « Aujourd'hui », prochains tournois LABAF, ou les tournois « En direct »), puis la liste par mois avec filtres de niveau et la case « Seulement avec des joueurs LABAF ». **Pas de noms d'inscrits sur l'accueil**, seulement le compteur « ● N LABAF ».
+- **Accueil** (dans cet ordre) : titre « Tournois », bloc **« La saison LABAF »** (toujours visible, pas dépliable), cartes « À la une » (dernier tournoi, « Aujourd'hui », prochains tournois LABAF, ou « En direct »), puis la liste par mois avec filtres de niveau et la case « Seulement avec des joueurs LABAF ». **Pas de noms d'inscrits sur l'accueil**, seulement le compteur « ● N LABAF » (seule exception voulue : les podiums joueurs/joueuses du bloc saison).
+- **Carte du dernier tournoi** : fond gris, liseré pâli, « ✓ Terminé · il y a N jours ».
+- **Bloc « La saison LABAF »** : sur ordinateur 4 colonnes (chiffres en col. 1-2, meilleurs joueurs col. 3, meilleures joueuses col. 4) ; sur téléphone chiffres sur 2 colonnes puis podiums empilés. Contenu : gros « % de victoires · N matchs » + V/D/N + barre, tournois disputés, podiums (seulement les médailles obtenues), buts marqués / encaissés, podium des 3 meilleurs % de victoires par genre (prénom puis NOM en dessous). **Pas** de phrase d'explication, **pas** d'écart de buts.
+- Calcul (dans `computeSeason` de `scripts/update.mjs`, résultat stocké dans `index.json` → `season`) : % = V / (V + D) ; minimum 10 matchs pour les podiums joueurs (`MIN_MATCHES`) ; un double gagné = 1 victoire par joueur ; un match LABAF contre LABAF compte une fois dans les matchs, compte pour le gagnant, mais est exclu du bilan club et des buts. Genre lu sur Coral (`gender`), stocké seulement pour les membres sous `g: "f"|"m"`.
 - **Fiche tournoi** : matchs en cours, prochains matchs, résultats par catégorie (classement, bilan V/N/D, détail manche par manche), bloc « S'inscrire » (date limite, tarifs, catégories et horaires, lien Coral, PDF du dossier).
 - Statistiques retenues : joueurs LABAF, victoires–défaites, podiums. La stat « engagements » a été **supprimée** à la demande de Rémi.
 - Sur téléphone, les filtres sont des pastilles qu'on fait défiler horizontalement.
@@ -93,3 +97,4 @@ README.md              notice
 - 28/09/2026 : création, premier aperçu sur l'Open National de Lyon, filtre des licenciés actifs, accueil multi-tournois, couleurs, médailles, mise en ligne (d'abord sous `remhie.github.io`).
 - 28/09 au 01/10 : transfert vers l'organisation `labaf-paris`, mise en place de cron-job.org.
 - 03/10 : premier test en direct (Open Régional de Bordeaux). Corrections : règle « En direct », carte « Aujourd'hui ».
+- 03/11 : bloc « La saison LABAF » en tête de l'accueil, carte « Terminé » pour le dernier tournoi, mode robot `saison`, chemin de données compatible Windows.

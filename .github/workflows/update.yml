@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
     inputs:
       mode:
-        description: 'live ou full'
+        description: 'live, full ou saison'
         default: 'full'
 
 permissions:
